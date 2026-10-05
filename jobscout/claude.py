@@ -30,7 +30,7 @@ def _client():
     if not key:
         raise ClaudeError(
             "ANTHROPIC_API_KEY is not set. Create a key at console.anthropic.com "
-            "and export it, or put it in a .env file."
+            "and set it as an environment variable."
         )
     return Anthropic(api_key=key)
 
