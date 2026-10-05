@@ -1,0 +1,46 @@
+JANE OKONKWO, Ph.D.
+Postdoctoral Research Associate
+Department of Civil and Environmental Engineering, University of Washington
+jane.okonkwo@example.edu
+
+EDUCATION
+Ph.D., Environmental Engineering, University of Michigan, conferred 12 May 2023.
+   Dissertation: Low-cost sensor networks for urban air quality in data-sparse cities.
+M.S., Environmental Engineering, University of Lagos, 2018.
+B.Eng., Chemical Engineering, University of Lagos, 2015.
+
+RESEARCH EXPERIENCE
+Postdoctoral Research Associate, University of Washington, 2023 - present.
+   Deploying and calibrating low-cost particulate matter sensor networks across Seattle
+   and Tacoma. Built the calibration pipeline that corrects for humidity and sensor drift.
+   Developing machine learning models that downscale satellite aerosol optical depth to
+   neighbourhood-scale PM2.5 estimates, with uncertainty reported per grid cell.
+   Co-designed a community science programme placing sensors with eight neighbourhood
+   associations; co-authored the data-sharing agreement with city partners.
+
+Graduate Research Assistant, University of Michigan, 2018 - 2023.
+   Designed an enclosure and data logger for outdoor low-cost sensors; field tested in
+   Lagos and Accra across two rainy seasons. Published the reference correction method
+   now used by three other groups.
+
+PUBLICATIONS
+11 refereed journal articles (7 as first author) in Environmental Science & Technology,
+Atmospheric Measurement Techniques, Environment International, and Aerosol Science and
+Technology. 3 manuscripts under review. 14 conference papers (AGU, AAAR, ISES).
+
+SOFTWARE
+AirCal, an open-source Python toolkit for low-cost air quality sensor calibration.
+
+TEACHING
+Instructor of record, Introduction to Environmental Engineering, University of Michigan,
+   Summer 2022. 34 students.
+Teaching assistant, Air Pollution Control and Environmental Data Analysis, 2019 - 2022.
+Mentored 6 undergraduate researchers and 2 M.S. students.
+
+FUNDING AND SERVICE
+Co-wrote a funded NSF Smart and Connected Communities proposal ($1.4M, 2024). No awards
+held as PI. Reviewer for Environmental Science & Technology and Atmospheric Environment.
+
+SKILLS
+Python (pandas, scikit-learn, PyTorch, xarray), R, SQL, QGIS, Google Earth Engine,
+Arduino and Raspberry Pi instrumentation, field campaign design, community engagement.

@@ -1,0 +1,17 @@
+# Your own search - keep it out of the repo unless you mean to publish it
+/profile.md
+/positions.json
+/tracker.html
+*.pdf
+*.docx
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/

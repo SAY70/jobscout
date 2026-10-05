@@ -1,0 +1,93 @@
+name: Weekly job scan
+
+# Runs the scan, commits anything new, and opens an issue listing the finds.
+# Needs one repository secret: ANTHROPIC_API_KEY.
+
+on:
+  schedule:
+    # Mondays at 07:46 UTC. Change this to suit your timezone.
+    - cron: "46 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: jobscout-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Check for a profile
+        run: |
+          if [ ! -f profile.md ]; then
+            echo "::error::No profile.md in the repository. Run 'jobscout profile <your CV>' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Scan
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          jobscout scan --searches 24 | tee scan-output.txt
+
+      - name: Extract the digest
+        id: digest
+        run: |
+          {
+            echo "body<<JOBSCOUT_EOF"
+            sed -n '/^\*\*/,$p' scan-output.txt
+            echo "JOBSCOUT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit any changes
+        id: commit
+        run: |
+          git config user.name "jobscout"
+          git config user.email "jobscout@users.noreply.github.com"
+          git add positions.json tracker.html
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing new."
+          else
+            git commit -m "Weekly scan: $(date -u +%Y-%m-%d)"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open an issue with the digest
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = process.env.DIGEST || "The scan ran but produced no digest.";
+            const today = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Job scan — ${today}`,
+              body,
+              labels: ["jobscout"],
+            });
+        env:
+          DIGEST: ${{ steps.digest.outputs.body }}
+
+      - name: Clean up
+        if: always()
+        run: rm -f scan-output.txt
