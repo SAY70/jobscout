@@ -1,7 +1,9 @@
 """Command line interface.
 
-    jobscout profile CV.pdf --intent "..."   write the search profile
-    jobscout scan                            find new postings, score them
+    jobscout init --cv CV.pdf --keywords ...  write the search profile (no AI)
+    jobscout profile CV.pdf --intent "..."   write the search profile with Claude
+    jobscout scan                            find new postings, score them (free)
+    jobscout scan --engine claude            the same, using Claude web search
     jobscout build                           rebuild the HTML tracker
     jobscout add --url ...                   add one posting by hand
     jobscout list                            print what is tracked
@@ -14,9 +16,11 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from . import builder
 from .claude import ClaudeError
 from .cv import CVError, read_cv
 from .profile import build_profile, write_profile
+from .spec import ROLE_TYPES, parse
 from .render import digest, render
 from .store import Position, load, merge, save, slugify
 
@@ -53,24 +57,79 @@ def cmd_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _split(values: list[str] | None) -> list[str]:
+    out: list[str] = []
+    for v in values or []:
+        out.extend(x.strip().lower() for x in v.split(",") if x.strip())
+    return out
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    cv_text = ""
+    if args.cv:
+        try:
+            cv_text = read_cv(args.cv)
+        except CVError as exc:
+            return _die(str(exc))
+
+    core = _split(args.keywords)
+    if not core and cv_text:
+        core = builder.suggest_keywords(cv_text, limit=8)
+        print("No --keywords given, so these were taken from your CV:")
+        print("  " + ", ".join(core))
+    if not core:
+        return _die("Give some --keywords, or a --cv to take them from.")
+
+    text = builder.build(
+        name=args.name or builder.guess_name(cv_text),
+        role_types=_split(args.roles) or list(ROLE_TYPES),
+        needs_sponsorship=args.sponsorship == "yes",
+        core=core,
+        supporting=_split(args.supporting),
+        avoid=_split(args.avoid),
+        locations=_split(args.locations),
+    )
+    path = write_profile(text, args.out)
+    print(f"Wrote {path}")
+    print("Read it through and edit it - it decides what the scan looks for.")
+    return 0
+
+
+def _scan_free(args: argparse.Namespace, profile_md: str, known: list[Position]):
+    from .freescan import run
+
+    spec = parse(profile_md)
+    for problem in spec.problems():
+        print(f"warning: {problem}", file=sys.stderr)
+
+    def progress(msg: str, frac: float) -> None:
+        print("\r" + f"{msg:<50}", end="", flush=True)
+
+    found, skipped = run(spec, known, max_queries=args.queries, progress=progress)
+    print()
+    if args.verbose:
+        for s in skipped:
+            print(f"  skipped: {s['title']} - {s['why']}")
+    return found
+
+
 def cmd_scan(args: argparse.Namespace) -> int:
     profile_path = Path(args.profile)
     if not profile_path.is_file():
         return _die(f"No profile at {profile_path}. Run 'jobscout profile' first.")
 
-    from .scan import scan as run_scan
-
     known = load(args.data)
+    profile_md = profile_path.read_text(encoding="utf-8")
     print(f"Scanning with {profile_path} against {len(known)} tracked positions...")
-    try:
-        found = run_scan(
-            profile_path.read_text(encoding="utf-8"),
-            known,
-            model=args.model,
-            searches=args.searches,
-        )
-    except ClaudeError as exc:
-        return _die(str(exc))
+    if args.engine == "free":
+        found = _scan_free(args, profile_md, known)
+    else:
+        from .scan import scan as run_scan
+
+        try:
+            found = run_scan(profile_md, known, model=args.model, searches=args.searches)
+        except ClaudeError as exc:
+            return _die(str(exc))
 
     merged, added = merge(known, found)
     save(merged, args.data)
@@ -145,7 +204,23 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--title", default="Job Search Tracker", help="page title")
         p.add_argument("--no-build", action="store_true", help="skip rebuilding the page")
 
-    p_profile = sub.add_parser("profile", help="write a search profile from a CV")
+    p_init = sub.add_parser("init", help="write a search profile from a form (no AI)")
+    p_init.add_argument("--cv", help="CV to take your name and keywords from")
+    p_init.add_argument("--name")
+    p_init.add_argument("--keywords", nargs="*", help="core keywords, e.g. 'remote sensing'")
+    p_init.add_argument("--supporting", nargs="*", help="supporting keywords")
+    p_init.add_argument("--avoid", nargs="*", help="keywords that rule a posting out")
+    p_init.add_argument("--locations", nargs="*", help="states, cities or countries")
+    p_init.add_argument(
+        "--roles", nargs="*",
+        help="any of: " + ", ".join(f"'{r}'" for r in ROLE_TYPES) + " (default: all four)",
+    )
+    p_init.add_argument("--sponsorship", choices=("yes", "no"), default="yes",
+                        help="do you need visa sponsorship? (default: yes)")
+    p_init.add_argument("--out", default=DEFAULT_PROFILE)
+    p_init.set_defaults(func=cmd_init)
+
+    p_profile = sub.add_parser("profile", help="write a search profile from a CV with Claude")
     p_profile.add_argument("cv", help="path to a CV (.pdf, .docx, .md, .txt, .tex)")
     p_profile.add_argument("--intent", help="what you are looking for, in a sentence")
     p_profile.add_argument("--out", default=DEFAULT_PROFILE, help="where to write it")
@@ -154,7 +229,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scan = sub.add_parser("scan", help="search for new postings and score them")
     p_scan.add_argument("--profile", default=DEFAULT_PROFILE)
-    p_scan.add_argument("--searches", type=int, default=24, help="search budget")
+    p_scan.add_argument("--engine", choices=("free", "claude"), default="free",
+                        help="free job-board feeds (default) or Claude web search")
+    p_scan.add_argument("--queries", type=int, default=8,
+                        help="free engine: how many core keywords to search")
+    p_scan.add_argument("--verbose", action="store_true",
+                        help="free engine: list what was skipped and why")
+    p_scan.add_argument("--searches", type=int, default=24, help="claude engine: search budget")
     p_scan.add_argument("--model", help="override the Claude model")
     shared(p_scan)
     p_scan.set_defaults(func=cmd_scan)

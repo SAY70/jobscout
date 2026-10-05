@@ -11,56 +11,62 @@ from pathlib import Path
 
 from .claude import complete
 
-PROMPT = """You are helping someone set up an automated job search. Below is their CV, \
-followed by what they say they are looking for.
+PROMPT = """You are helping someone set up an automated academic job search. Below is their CV, followed by what they say they are looking for.
 
-Write a search specification as a markdown document. It will be read by an automated \
-scanner every week, and by the candidate, who will edit it. Be concrete and specific to \
-this person: a generic profile produces generic results.
+Write a search profile as a markdown document. A program reads it every week, and the candidate edits it, so follow the format exactly: the program looks for these headings and reads the bullet points under them. Be specific to this person - a generic profile finds generic jobs.
 
 Use exactly these sections, in this order:
 
 # <Their name> - job search fit profile
 
 ## The candidate, in one paragraph
-Degree and date, current position, what they actually do day to day, publication and \
-funding record, teaching record. Plain sentences, no adjectives of praise.
+Degree and date, current position, what they work on, publication, funding and teaching record. Plain sentences. Do not invent anything that is not in the CV.
 
-## Hard filters - exclude or flag
-What disqualifies a posting outright (citizenship requirements, no sponsorship, seniority \
-mismatches), and what should be flagged but still shown. Include any time-limited \
-eligibility, such as "within N years of PhD" windows, with the date it expires. If the CV \
-shows work authorisation or nationality, say what it implies; if it does not, say so \
-rather than guessing.
+## Role types
+A bullet list containing only those of these four that suit the candidate:
+- Assistant Professor
+- Teaching Professor
+- Research Faculty
+- Research Scientist
 
-## Role titles to search
-Two groups, both filled in: research-weighted titles, and teaching-weighted titles. Use \
-the real title wording employers use in this person's field.
+## Visa
+One line, exactly "needs sponsorship: yes" or "needs sponsorship: no". Say yes if they say they need sponsorship, or the CV shows a non-US citizen with a temporary visa. If the CV does not say, write "needs sponsorship: yes" and add a bracketed note asking them to check.
 
-## Target departments and units
-The departments and named institutes where this person would actually be hired.
+## Core keywords
+6 to 12 bullets. Short phrases (one to three words) an employer would put in a job title or the first paragraph of an advert for this person, taken from the CV's own vocabulary. These are searched on the job boards, so be precise: "remote sensing", not "science".
 
-## Keyword sets
-Three lists: core terms (any one is a strong signal), supporting terms (count only \
-alongside a core term), and avoid terms (these indicate a different candidate entirely). \
-Draw the core terms from the CV's own vocabulary.
+## Supporting keywords
+8 to 15 bullets: methods, tools and application areas from the CV that strengthen a match.
 
-## Sources to search each week
-Aggregator boards, the professional societies of this field, relevant national labs or \
-government employers, relevant industry employers, and a watch list of 20-40 named \
-institutions that genuinely have the target departments.
+## Avoid keywords
+3 to 8 bullets: words in a job title that mean the job is for someone else entirely (for example "nursing" or "clinical" for an engineer).
 
-## Scoring rubric (0-100)
-Five weighted criteria summing to 100, each with what earns full marks and what earns \
-zero. Then state the report threshold and what counts as a strong fit.
+## Locations
+Bullets of states, cities or countries they named. If they did not limit location, a single bullet: "- anywhere".
 
-## Calibration examples
-Three to six example postings, invented but realistic for this field, each with a score \
-and one line of reasoning. These teach the scanner where the boundaries are.
+## Sources
+Exactly these bullets, unchanged:
+- chronicle
+- insidehighered
+- naturecareers
+- sciencecareers
+- timeshighered
+- agu
 
-Rules: do not invent facts that are not in the CV. Where something important is missing, \
-write a bracketed note telling the candidate what to fill in. Write plainly and avoid \
-promotional language. Output only the markdown document, with no preamble.
+## Scoring
+Exactly these bullets; you may change the numbers, which must sum to 100 for the first five:
+- subject: 40
+- role: 20
+- visa: 20
+- supporting: 10
+- location: 10
+- threshold: 50
+- strong: 75
+
+## Notes
+Anything else useful: time-limited eligibility windows with their dates, named institutions to watch, societies in their field. Bracketed notes where the CV was silent.
+
+Output only the markdown document, with no preamble and no code fences.
 
 === CV ===
 {cv}
@@ -70,9 +76,14 @@ promotional language. Output only the markdown document, with no preamble.
 """
 
 
+def prompt_for(cv_text: str, intent: str) -> str:
+    """The full prompt, for pasting into any chatbot by hand."""
+    return PROMPT.format(cv=cv_text, intent=intent.strip() or "Not stated.")
+
+
 def build_profile(cv_text: str, intent: str, *, model: str | None = None) -> str:
     """Generate the profile markdown for one candidate."""
-    prompt = PROMPT.format(cv=cv_text, intent=intent.strip() or "Not stated.")
+    prompt = prompt_for(cv_text, intent)
     kwargs = {"model": model} if model else {}
     body = complete(prompt, **kwargs)
     stamp = dt.date.today().isoformat()

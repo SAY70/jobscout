@@ -1,7 +1,8 @@
 name: Weekly job scan
 
-# Runs the scan, commits anything new, and opens an issue listing the finds.
-# Needs one repository secret: ANTHROPIC_API_KEY.
+# Runs the free scan, commits anything new, and opens an issue listing the finds.
+# Needs no secrets. To use Claude's web search instead, add an ANTHROPIC_API_KEY
+# repository secret and change the scan line to: jobscout scan --engine claude
 
 on:
   schedule:
@@ -19,6 +20,8 @@ concurrency:
 
 jobs:
   scan:
+    # The public jobscout repository has no profile of its own; only copies run.
+    if: github.repository != 'SAY70/jobscout'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,19 +36,14 @@ jobs:
       - name: Check for a profile
         run: |
           if [ ! -f profile.md ]; then
-            echo "::error::No profile.md in the repository. Run 'jobscout profile <your CV>' locally and commit the result."
+            echo "::error::No profile.md in the repository. Make one in the app or with 'jobscout init', then commit it."
             exit 1
           fi
 
       - name: Scan
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::error::ANTHROPIC_API_KEY is not set. Add it under Settings → Secrets and variables → Actions."
-            exit 1
-          fi
-          jobscout scan --searches 24 | tee scan-output.txt
+        run: jobscout scan | tee scan-output.txt
 
       - name: Extract the digest
         id: digest
@@ -61,7 +59,8 @@ jobs:
         run: |
           git config user.name "jobscout"
           git config user.email "jobscout@users.noreply.github.com"
-          git add positions.json tracker.html
+          # -f because these files are in .gitignore, to keep them out of the public repo
+          git add -f positions.json tracker.html
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Nothing new."

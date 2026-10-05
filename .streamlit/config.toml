@@ -1,0 +1,10 @@
+[theme]
+primaryColor = "#1F5F8B"
+font = "sans serif"
+
+[server]
+# CVs are small; this keeps uploads sensible on a shared host.
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false

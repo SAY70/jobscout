@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jobscout"
-version = "0.1.0"
-description = "Turn a CV into a job search that runs itself: a scored, tracked pipeline of live postings."
+version = "0.2.0"
+description = "Turn a CV into an academic job search that runs itself - free job-board feeds, visa-sponsorship filtering, no AI required."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -19,12 +19,14 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Office/Business",
 ]
-dependencies = ["anthropic>=0.40"]
+dependencies = []
 
 [project.optional-dependencies]
 pdf = ["pypdf>=4.0"]
 docx = ["python-docx>=1.1"]
-all = ["pypdf>=4.0", "python-docx>=1.1"]
+claude = ["anthropic>=0.40"]
+app = ["streamlit>=1.40", "pypdf>=4.0", "python-docx>=1.1"]
+all = ["pypdf>=4.0", "python-docx>=1.1", "streamlit>=1.40", "anthropic>=0.40"]
 
 [project.urls]
 Homepage = "https://github.com/SAY70/jobscout"
