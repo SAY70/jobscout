@@ -132,3 +132,108 @@ def page(url: str, limit: int = 40_000) -> tuple[str, dict[str, str]]:
         raw = raw[start : end if end != -1 else None]
     raw = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", raw)
     return _strip(raw)[:limit], fields
+
+# --- countries ---------------------------------------------------------------
+#
+# The boards state a location as free text ("Gainesville, FL" or
+# "London, United Kingdom"), never a country code. So a country is inferred
+# from that string. Two-letter US state codes are matched case-sensitively,
+# because a lower-case "in" or "or" appears in ordinary prose.
+
+_US_STATES = (
+    "Alabama Alaska Arizona Arkansas California Colorado Connecticut Delaware "
+    "Florida Georgia Hawaii Idaho Illinois Indiana Iowa Kansas Kentucky Louisiana "
+    "Maine Maryland Massachusetts Michigan Minnesota Mississippi Missouri Montana "
+    "Nebraska Nevada Ohio Oklahoma Oregon Pennsylvania Tennessee Texas Utah "
+    "Vermont Virginia Washington Wisconsin Wyoming"
+).split() + [
+    "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina",
+    "North Dakota", "Rhode Island", "South Carolina", "South Dakota",
+    "West Virginia", "District of Columbia",
+]
+
+_US_CODES = (
+    "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS "
+    "MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY"
+).split()
+
+COUNTRY_HINTS: dict[str, list[str]] = {
+    "United States": ["united states", "u.s.a", "usa", "america"] + [s.lower() for s in _US_STATES],
+    "Canada": ["canada", "ontario", "quebec", "british columbia", "alberta", "manitoba",
+               "saskatchewan", "nova scotia", "newfoundland", "toronto", "montreal",
+               "vancouver", "ottawa", "calgary", "edmonton"],
+    "United Kingdom": ["united kingdom", "u.k.", "england", "scotland", "wales",
+                       "northern ireland", "london", "cambridge, uk", "oxford, uk"],
+    "Ireland": ["ireland", "dublin", "galway", "cork, ireland"],
+    "Germany": ["germany", "deutschland", "berlin", "munich", "munchen", "hamburg",
+                "frankfurt", "heidelberg", "leipzig", "dresden", "stuttgart"],
+    "Netherlands": ["netherlands", "holland", "amsterdam", "utrecht", "rotterdam",
+                    "wageningen", "delft", "eindhoven", "leiden", "groningen"],
+    "Belgium": ["belgium", "brussels", "leuven", "ghent", "antwerp"],
+    "France": ["france", "paris", "lyon", "toulouse", "grenoble", "marseille", "montpellier"],
+    "Switzerland": ["switzerland", "zurich", "geneva", "lausanne", "basel", "bern"],
+    "Austria": ["austria", "vienna", "graz", "innsbruck", "salzburg"],
+    "Sweden": ["sweden", "stockholm", "uppsala", "lund", "gothenburg", "umea"],
+    "Norway": ["norway", "oslo", "bergen", "trondheim", "tromso"],
+    "Denmark": ["denmark", "copenhagen", "aarhus", "odense", "lyngby"],
+    "Finland": ["finland", "helsinki", "espoo", "tampere", "oulu", "turku"],
+    "Spain": ["spain", "madrid", "barcelona", "valencia", "seville", "granada"],
+    "Italy": ["italy", "rome", "milan", "turin", "bologna", "padua", "naples", "trento"],
+    "Portugal": ["portugal", "lisbon", "porto", "coimbra"],
+    "Poland": ["poland", "warsaw", "krakow", "poznan", "wroclaw"],
+    "Czechia": ["czechia", "czech republic", "prague", "brno"],
+    "Australia": ["australia", "sydney", "melbourne", "brisbane", "perth", "adelaide",
+                  "canberra", "queensland", "new south wales", "victoria, australia"],
+    "New Zealand": ["new zealand", "auckland", "wellington", "christchurch", "dunedin"],
+    "Singapore": ["singapore"],
+    "Hong Kong": ["hong kong"],
+    "China": ["china", "beijing", "shanghai", "shenzhen", "hangzhou", "wuhan", "nanjing"],
+    "Japan": ["japan", "tokyo", "kyoto", "osaka", "sendai", "tsukuba", "sapporo"],
+    "South Korea": ["south korea", "korea", "seoul", "daejeon", "busan", "pohang"],
+    "India": ["india", "delhi", "mumbai", "bangalore", "bengaluru", "chennai", "kolkata",
+              "hyderabad", "pune", "kanpur", "kharagpur", "varanasi", "roorkee", "guwahati"],
+    "Saudi Arabia": ["saudi arabia", "riyadh", "jeddah", "thuwal", "dhahran"],
+    "United Arab Emirates": ["united arab emirates", "u.a.e", "abu dhabi", "dubai", "sharjah"],
+    "Qatar": ["qatar", "doha"],
+    "Israel": ["israel", "jerusalem", "tel aviv", "haifa", "rehovot", "beer sheva"],
+    "South Africa": ["south africa", "cape town", "johannesburg", "pretoria", "stellenbosch"],
+    "Brazil": ["brazil", "sao paulo", "rio de janeiro", "campinas", "brasilia"],
+    "Mexico": ["mexico", "mexico city", "monterrey", "guadalajara"],
+    "Chile": ["chile", "santiago", "valparaiso", "concepcion"],
+}
+
+COUNTRIES = tuple(COUNTRY_HINTS)
+
+
+def country_of(location: str) -> str:
+    """Infer the country from a board's free-text location, or "" if unclear.
+
+    A blank return means "could not tell", which callers should treat as
+    "do not discard", since a missing location is common on these boards.
+    """
+    if not location or not location.strip():
+        return ""
+    low = location.lower()
+    for country, hints in COUNTRY_HINTS.items():
+        for hint in hints:
+            if re.search(r"(?<![a-z])" + re.escape(hint) + r"(?![a-z])", low):
+                return country
+    # US state codes last, and case-sensitively, so "IN" is Indiana but "in" is a word
+    for code in _US_CODES:
+        if re.search(r"(?<![A-Za-z])" + code + r"(?![A-Za-z])", location):
+            return "United States"
+    return ""
+
+
+def in_countries(location: str, wanted: list[str]) -> bool:
+    """Is this location in one of the wanted countries?
+
+    True when nothing is wanted, and True when the country cannot be told,
+    so an unparseable location is never silently dropped.
+    """
+    if not wanted:
+        return True
+    found = country_of(location)
+    if not found:
+        return True
+    return found.lower() in {w.lower() for w in wanted}

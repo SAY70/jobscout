@@ -26,21 +26,44 @@ from .store import Position, slugify
 
 # --- role type ---------------------------------------------------------------
 
+# Support and administrative staff roles, which are never an academic track.
+# Doctoral, postdoctoral, professorial and leadership titles are NOT rejected
+# here any more. Each has its own track below, and a profile decides which of
+# them to search by listing them under "## Role types".
 _REJECT = re.compile(
-    r"\b(post-?doc\w*|post-?doctoral|dean|provost|president|chancellor|director|"
-    r"department (chair|head)|head of|chairperson|adjunct|visiting|"
-    r"graduate (assistant|student)|ph\.?d\.? (student|position|candidate)|"
-    r"studentship|technician|coordinator|manager|administrator|advisor|"
-    r"specialist|librarian|counsel|intern)\b",
+    r"\b(provost|president|chancellor|adjunct|per[- ]course|sessional|"
+    r"graduate (assistant|teaching assistant)|technician|technologist|"
+    r"coordinator|manager|administrator|advisor|adviser|"
+    r"specialist|librarian|counsel|counsellor|counselor|intern|"
+    r"secretary|receptionist|custodian|accountant)\b",
     re.I,
 )
-_SENIOR_ONLY = re.compile(r"\b(associate|full|distinguished|endowed)\s+professor\b", re.I)
 
+# Ordered most specific first. The first pattern that matches wins, so
+# "Research Assistant Professor" lands on research faculty, and a faculty line
+# that also carries an administrative duty ("Assistant Professor and Director
+# of the Center") lands on the faculty track rather than on director.
 _TRACKS = (
+    (
+        "phd",
+        re.compile(
+            r"\bph\.?d\.?\s*(student|position|candidate|researcher|fellow|vacancy|opportunit)"
+            r"|\bdoctoral (student|position|candidate|researcher|programme|program)\b"
+            r"|\bstudentship\b|\bdoctoral fellowship\b",
+            re.I,
+        ),
+    ),
+    (
+        "postdoc",
+        re.compile(
+            r"\bpost-?doc\w*\b|\bpost-?doctoral\b|\bpost doc\b",
+            re.I,
+        ),
+    ),
     (
         "research faculty",
         re.compile(
-            r"\bresearch (assistant )?professor\b|\bresearch faculty\b|"
+            r"\bresearch (assistant |associate )?professor\b|\bresearch faculty\b|"
             r"\bprofessor of research\b",
             re.I,
         ),
@@ -48,9 +71,10 @@ _TRACKS = (
     (
         "teaching professor",
         re.compile(
-            r"\bteaching (assistant )?professor\b|\b(assistant )?professor of teaching\b|"
+            r"\bteaching (assistant |associate )?professor\b|\b(assistant |associate )?professor of teaching\b|"
             r"\bteaching[- ]track\b|\blecturer\b|\binstructor\b|\bprofessor of (the )?practice\b|"
-            r"\bteaching faculty\b",
+            r"\bteaching faculty\b|\bclinical (assistant |associate )?professor\b|"
+            r"\binstructional (assistant |associate )?professor\b|\bvisiting (assistant |associate )?professor\b",
             re.I,
         ),
     ),
@@ -67,17 +91,48 @@ _TRACKS = (
             re.I,
         ),
     ),
+    (
+        "associate professor",
+        re.compile(r"\bassociate professor\b|\breader\b", re.I),
+    ),
+    (
+        "professor",
+        re.compile(r"\b(full|distinguished|endowed|chair|named) professor\b|"
+                   r"\bprofessor\b", re.I),
+    ),
+    (
+        "department head",
+        re.compile(
+            r"\bdepartment (chair|head)\b|\bhead of (department|school|division|the )\b|"
+            r"\bchairperson\b|\bdepartment chairperson\b|\bhod\b|\bschool head\b",
+            re.I,
+        ),
+    ),
+    (
+        "dean",
+        re.compile(r"\b(associate |assistant |vice |executive )?dean\b", re.I),
+    ),
+    (
+        "director",
+        re.compile(r"\b(associate |assistant |executive |deputy )?director\b|"
+                   r"\bcentre director\b|\bcenter director\b", re.I),
+    ),
 )
 
 
 def classify(title: str) -> str | None:
-    """The academic track a job title belongs to, or None to skip it."""
+    """The academic track a job title belongs to, or None to skip it.
+
+    None means the title is not an academic post at all, for instance a
+    technician or a coordinator. Which of the tracks are actually wanted is a
+    separate question, decided by the profile's role-type list.
+    """
     if _REJECT.search(title):
         return None
     for track, pattern in _TRACKS:
         if pattern.search(title):
             return track
-    return None  # e.g. "Associate Professor" alone, or a staff role
+    return None
 
 
 # --- visa --------------------------------------------------------------------
@@ -208,6 +263,9 @@ def score(spec: Spec, *, title: str, text: str, track: str | None,
     if spec.needs_sponsorship and (sponsorship == "no" or citizenship):
         why = "requires US citizenship" if citizenship else "will not sponsor a visa"
         return Verdict(False, 0, why)
+    if not feeds.in_countries(location, spec.countries):
+        found = feeds.country_of(location) or location
+        return Verdict(False, 0, f"in {found}, not one of your countries")
 
     core_title = _hits(spec.core, title)
     core_text = _hits(spec.core, text)
@@ -241,8 +299,18 @@ def score(spec: Spec, *, title: str, text: str, track: str | None,
 Progress = Callable[[str, float], None]
 
 
+_CATEGORIES = {
+    "phd": "doctoral",
+    "postdoc": "postdoctoral",
+    "teaching professor": "teaching track",
+    "department head": "leadership",
+    "dean": "leadership",
+    "director": "leadership",
+}
+
+
 def _category(track: str) -> str:
-    return "teaching track" if track == "teaching professor" else "academic"
+    return _CATEGORIES.get(track, "academic")
 
 
 def run(

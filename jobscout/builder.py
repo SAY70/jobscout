@@ -13,9 +13,40 @@ import re
 from collections import Counter
 
 from .feeds import BOARDS
-from .spec import DEFAULT_WEIGHTS, ROLE_TYPES
+from .spec import ALL_ROLE_TYPES, DEFAULT_WEIGHTS, ROLE_TYPES
 
 ROLE_TITLES = {
+    "phd": [
+        "PhD Position / Studentship",
+        "Doctoral Researcher",
+        "PhD Candidate",
+    ],
+    "postdoc": [
+        "Postdoctoral Research Associate",
+        "Postdoctoral Fellow",
+        "Postdoctoral Researcher",
+    ],
+    "associate professor": [
+        "Associate Professor",
+        "Reader",
+    ],
+    "professor": [
+        "Professor (full)",
+        "Distinguished Professor",
+        "Endowed / Named Chair Professor",
+    ],
+    "department head": [
+        "Department Head / Chair",
+        "Head of School or Division",
+    ],
+    "dean": [
+        "Dean",
+        "Associate or Assistant Dean",
+    ],
+    "director": [
+        "Director of a Centre or Institute",
+        "Executive or Associate Director",
+    ],
     "assistant professor": [
         "Assistant Professor (tenure-track)",
         "Assistant Professor",
@@ -102,13 +133,14 @@ def build(
     supporting: list[str] | None = None,
     avoid: list[str] | None = None,
     locations: list[str] | None = None,
+    countries: list[str] | None = None,
     sources: list[str] | None = None,
     weights: dict[str, int] | None = None,
     threshold: int = 50,
     strong: int = 75,
 ) -> str:
     """Return the profile markdown for these answers."""
-    role_types = [r for r in (role_types or list(ROLE_TYPES)) if r in ROLE_TYPES]
+    role_types = [r for r in (role_types or list(ROLE_TYPES)) if r in ALL_ROLE_TYPES]
     sources = sources or list(BOARDS)
     w = dict(DEFAULT_WEIGHTS)
     w.update(weights or {})
@@ -128,13 +160,15 @@ def build(
     )
 
     stamp = dt.date.today().isoformat()
+    all_tracks = ", ".join(ALL_ROLE_TYPES)
     return f"""# {name or "Candidate"} - job search fit profile
 
 ## The candidate, in one paragraph
 {summary.strip() or "[Write two or three plain sentences: degree and year, current position, what you work on.]"}
 
 ## Role types
-Only these four academic tracks are searched. Delete a line to stop searching it.
+Only the tracks listed here are searched. Delete a line to stop searching it, or
+add one of: {all_tracks}.
 
 {chr(10).join(titles)}
 
@@ -159,9 +193,15 @@ A posting whose job title or employer name contains any of these is dropped.
 {_bullets(avoid or [])}
 
 ## Locations
-Leave empty to search everywhere. Use state names, cities or countries.
+Leave empty to search everywhere. Use state names or cities.
 
 {_bullets(locations or []) if locations else "- anywhere"}
+
+## Countries
+Leave empty to search every country. A posting whose location names a country
+outside this list is dropped. A posting with no readable location is kept.
+
+{_bullets(countries or []) if countries else "- anywhere"}
 
 ## Sources
 Job boards to search. Names must match the list in the guide.

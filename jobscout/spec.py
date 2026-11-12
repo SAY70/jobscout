@@ -21,11 +21,29 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+# The four tracks searched unless the profile says otherwise. Kept narrow on
+# purpose, so an existing profile behaves exactly as it always did.
 ROLE_TYPES = (
     "assistant professor",
     "teaching professor",
     "research faculty",
     "research scientist",
+)
+
+# Every track the scanner can recognise, from doctoral through to leadership.
+# Add any of these to a profile's "## Role types" list to search for them.
+ALL_ROLE_TYPES = (
+    "phd",
+    "postdoc",
+    "research scientist",
+    "research faculty",
+    "teaching professor",
+    "assistant professor",
+    "associate professor",
+    "professor",
+    "department head",
+    "dean",
+    "director",
 )
 
 DEFAULT_WEIGHTS = {
@@ -46,6 +64,7 @@ class Spec:
     supporting: list[str] = field(default_factory=list)
     avoid: list[str] = field(default_factory=list)
     locations: list[str] = field(default_factory=list)
+    countries: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     weights: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
     threshold: int = 50
@@ -103,15 +122,36 @@ def _find(sections: dict[str, list[str]], *names: str) -> list[str] | None:
 
 
 def _role_type(text: str) -> str | None:
+    """Map a line from a profile's role-type list onto a known track.
+
+    Order matters. The most specific wording is tested first, so
+    "research assistant professor" lands on research faculty rather than
+    assistant professor, and "postdoctoral scientist" on postdoc rather
+    than research scientist.
+    """
     t = text.lower()
-    if "teach" in t or "lectur" in t or "instruct" in t:
-        return "teaching professor"
+    if "phd" in t or "ph.d" in t or "doctoral student" in t or "studentship" in t:
+        return "phd"
+    if "postdoc" in t or "post-doc" in t or "postdoctoral" in t or "post-doctoral" in t:
+        return "postdoc"
+    if "dean" in t:
+        return "dean"
+    if "director" in t:
+        return "director"
+    if "head" in t or "hod" in t or "chair" in t:
+        return "department head"
     if "research faculty" in t or "research professor" in t or "research assistant prof" in t:
         return "research faculty"
+    if "teach" in t or "lectur" in t or "instruct" in t or "practice" in t:
+        return "teaching professor"
     if "scientist" in t:
         return "research scientist"
     if "assistant professor" in t or "tenure" in t:
         return "assistant professor"
+    if "associate professor" in t:
+        return "associate professor"
+    if "professor" in t:
+        return "professor"
     return None
 
 
@@ -144,12 +184,14 @@ def parse(md: str) -> Spec:
         ("supporting", ("supporting keyword", "supporting term")),
         ("avoid", ("avoid keyword", "avoid term", "exclude keyword")),
         ("locations", ("location",)),
+        ("countries", ("countr",)),
         ("sources", ("source",)),
     ):
         lines = _find(s, *names)
         if lines is not None:
             setattr(spec, attr, _items(lines))
     spec.locations = [x for x in spec.locations if x not in ("anywhere", "any", "everywhere")]
+    spec.countries = [x for x in spec.countries if x not in ("anywhere", "any", "everywhere", "all")]
 
     lines = _find(s, "scoring")
     if lines is not None:
