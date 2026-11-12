@@ -1,0 +1,609 @@
+diff --git a/jobscout/builder.py b/jobscout/builder.py
+index 9aef11b..48dce81 100644
+--- a/jobscout/builder.py
++++ b/jobscout/builder.py
+@@ -13,9 +13,40 @@ import re
+ from collections import Counter
+ 
+ from .feeds import BOARDS
+-from .spec import DEFAULT_WEIGHTS, ROLE_TYPES
++from .spec import ALL_ROLE_TYPES, DEFAULT_WEIGHTS, ROLE_TYPES
+ 
+ ROLE_TITLES = {
++    "phd": [
++        "PhD Position / Studentship",
++        "Doctoral Researcher",
++        "PhD Candidate",
++    ],
++    "postdoc": [
++        "Postdoctoral Research Associate",
++        "Postdoctoral Fellow",
++        "Postdoctoral Researcher",
++    ],
++    "associate professor": [
++        "Associate Professor",
++        "Reader",
++    ],
++    "professor": [
++        "Professor (full)",
++        "Distinguished Professor",
++        "Endowed / Named Chair Professor",
++    ],
++    "department head": [
++        "Department Head / Chair",
++        "Head of School or Division",
++    ],
++    "dean": [
++        "Dean",
++        "Associate or Assistant Dean",
++    ],
++    "director": [
++        "Director of a Centre or Institute",
++        "Executive or Associate Director",
++    ],
+     "assistant professor": [
+         "Assistant Professor (tenure-track)",
+         "Assistant Professor",
+@@ -102,13 +133,14 @@ def build(
+     supporting: list[str] | None = None,
+     avoid: list[str] | None = None,
+     locations: list[str] | None = None,
++    countries: list[str] | None = None,
+     sources: list[str] | None = None,
+     weights: dict[str, int] | None = None,
+     threshold: int = 50,
+     strong: int = 75,
+ ) -> str:
+     """Return the profile markdown for these answers."""
+-    role_types = [r for r in (role_types or list(ROLE_TYPES)) if r in ROLE_TYPES]
++    role_types = [r for r in (role_types or list(ROLE_TYPES)) if r in ALL_ROLE_TYPES]
+     sources = sources or list(BOARDS)
+     w = dict(DEFAULT_WEIGHTS)
+     w.update(weights or {})
+@@ -128,13 +160,15 @@ def build(
+     )
+ 
+     stamp = dt.date.today().isoformat()
++    all_tracks = ", ".join(ALL_ROLE_TYPES)
+     return f"""# {name or "Candidate"} - job search fit profile
+ 
+ ## The candidate, in one paragraph
+ {summary.strip() or "[Write two or three plain sentences: degree and year, current position, what you work on.]"}
+ 
+ ## Role types
+-Only these four academic tracks are searched. Delete a line to stop searching it.
++Only the tracks listed here are searched. Delete a line to stop searching it, or
++add one of: {all_tracks}.
+ 
+ {chr(10).join(titles)}
+ 
+@@ -159,10 +193,16 @@ A posting whose job title or employer name contains any of these is dropped.
+ {_bullets(avoid or [])}
+ 
+ ## Locations
+-Leave empty to search everywhere. Use state names, cities or countries.
++Leave empty to search everywhere. Use state names or cities.
+ 
+ {_bullets(locations or []) if locations else "- anywhere"}
+ 
++## Countries
++Leave empty to search every country. A posting whose location names a country
++outside this list is dropped. A posting with no readable location is kept.
++
++{_bullets(countries or []) if countries else "- anywhere"}
++
+ ## Sources
+ Job boards to search. Names must match the list in the guide.
+ 
+diff --git a/jobscout/feeds.py b/jobscout/feeds.py
+index 0e4d15d..19c1000 100644
+--- a/jobscout/feeds.py
++++ b/jobscout/feeds.py
+@@ -132,3 +132,108 @@ def page(url: str, limit: int = 40_000) -> tuple[str, dict[str, str]]:
+         raw = raw[start : end if end != -1 else None]
+     raw = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", raw)
+     return _strip(raw)[:limit], fields
++
++# --- countries ---------------------------------------------------------------
++#
++# The boards state a location as free text ("Gainesville, FL" or
++# "London, United Kingdom"), never a country code. So a country is inferred
++# from that string. Two-letter US state codes are matched case-sensitively,
++# because a lower-case "in" or "or" appears in ordinary prose.
++
++_US_STATES = (
++    "Alabama Alaska Arizona Arkansas California Colorado Connecticut Delaware "
++    "Florida Georgia Hawaii Idaho Illinois Indiana Iowa Kansas Kentucky Louisiana "
++    "Maine Maryland Massachusetts Michigan Minnesota Mississippi Missouri Montana "
++    "Nebraska Nevada Ohio Oklahoma Oregon Pennsylvania Tennessee Texas Utah "
++    "Vermont Virginia Washington Wisconsin Wyoming"
++).split() + [
++    "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina",
++    "North Dakota", "Rhode Island", "South Carolina", "South Dakota",
++    "West Virginia", "District of Columbia",
++]
++
++_US_CODES = (
++    "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS "
++    "MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY"
++).split()
++
++COUNTRY_HINTS: dict[str, list[str]] = {
++    "United States": ["united states", "u.s.a", "usa", "america"] + [s.lower() for s in _US_STATES],
++    "Canada": ["canada", "ontario", "quebec", "british columbia", "alberta", "manitoba",
++               "saskatchewan", "nova scotia", "newfoundland", "toronto", "montreal",
++               "vancouver", "ottawa", "calgary", "edmonton"],
++    "United Kingdom": ["united kingdom", "u.k.", "england", "scotland", "wales",
++                       "northern ireland", "london", "cambridge, uk", "oxford, uk"],
++    "Ireland": ["ireland", "dublin", "galway", "cork, ireland"],
++    "Germany": ["germany", "deutschland", "berlin", "munich", "munchen", "hamburg",
++                "frankfurt", "heidelberg", "leipzig", "dresden", "stuttgart"],
++    "Netherlands": ["netherlands", "holland", "amsterdam", "utrecht", "rotterdam",
++                    "wageningen", "delft", "eindhoven", "leiden", "groningen"],
++    "Belgium": ["belgium", "brussels", "leuven", "ghent", "antwerp"],
++    "France": ["france", "paris", "lyon", "toulouse", "grenoble", "marseille", "montpellier"],
++    "Switzerland": ["switzerland", "zurich", "geneva", "lausanne", "basel", "bern"],
++    "Austria": ["austria", "vienna", "graz", "innsbruck", "salzburg"],
++    "Sweden": ["sweden", "stockholm", "uppsala", "lund", "gothenburg", "umea"],
++    "Norway": ["norway", "oslo", "bergen", "trondheim", "tromso"],
++    "Denmark": ["denmark", "copenhagen", "aarhus", "odense", "lyngby"],
++    "Finland": ["finland", "helsinki", "espoo", "tampere", "oulu", "turku"],
++    "Spain": ["spain", "madrid", "barcelona", "valencia", "seville", "granada"],
++    "Italy": ["italy", "rome", "milan", "turin", "bologna", "padua", "naples", "trento"],
++    "Portugal": ["portugal", "lisbon", "porto", "coimbra"],
++    "Poland": ["poland", "warsaw", "krakow", "poznan", "wroclaw"],
++    "Czechia": ["czechia", "czech republic", "prague", "brno"],
++    "Australia": ["australia", "sydney", "melbourne", "brisbane", "perth", "adelaide",
++                  "canberra", "queensland", "new south wales", "victoria, australia"],
++    "New Zealand": ["new zealand", "auckland", "wellington", "christchurch", "dunedin"],
++    "Singapore": ["singapore"],
++    "Hong Kong": ["hong kong"],
++    "China": ["china", "beijing", "shanghai", "shenzhen", "hangzhou", "wuhan", "nanjing"],
++    "Japan": ["japan", "tokyo", "kyoto", "osaka", "sendai", "tsukuba", "sapporo"],
++    "South Korea": ["south korea", "korea", "seoul", "daejeon", "busan", "pohang"],
++    "India": ["india", "delhi", "mumbai", "bangalore", "bengaluru", "chennai", "kolkata",
++              "hyderabad", "pune", "kanpur", "kharagpur", "varanasi", "roorkee", "guwahati"],
++    "Saudi Arabia": ["saudi arabia", "riyadh", "jeddah", "thuwal", "dhahran"],
++    "United Arab Emirates": ["united arab emirates", "u.a.e", "abu dhabi", "dubai", "sharjah"],
++    "Qatar": ["qatar", "doha"],
++    "Israel": ["israel", "jerusalem", "tel aviv", "haifa", "rehovot", "beer sheva"],
++    "South Africa": ["south africa", "cape town", "johannesburg", "pretoria", "stellenbosch"],
++    "Brazil": ["brazil", "sao paulo", "rio de janeiro", "campinas", "brasilia"],
++    "Mexico": ["mexico", "mexico city", "monterrey", "guadalajara"],
++    "Chile": ["chile", "santiago", "valparaiso", "concepcion"],
++}
++
++COUNTRIES = tuple(COUNTRY_HINTS)
++
++
++def country_of(location: str) -> str:
++    """Infer the country from a board's free-text location, or "" if unclear.
++
++    A blank return means "could not tell", which callers should treat as
++    "do not discard", since a missing location is common on these boards.
++    """
++    if not location or not location.strip():
++        return ""
++    low = location.lower()
++    for country, hints in COUNTRY_HINTS.items():
++        for hint in hints:
++            if re.search(r"(?<![a-z])" + re.escape(hint) + r"(?![a-z])", low):
++                return country
++    # US state codes last, and case-sensitively, so "IN" is Indiana but "in" is a word
++    for code in _US_CODES:
++        if re.search(r"(?<![A-Za-z])" + code + r"(?![A-Za-z])", location):
++            return "United States"
++    return ""
++
++
++def in_countries(location: str, wanted: list[str]) -> bool:
++    """Is this location in one of the wanted countries?
++
++    True when nothing is wanted, and True when the country cannot be told,
++    so an unparseable location is never silently dropped.
++    """
++    if not wanted:
++        return True
++    found = country_of(location)
++    if not found:
++        return True
++    return found.lower() in {w.lower() for w in wanted}
+diff --git a/jobscout/freescan.py b/jobscout/freescan.py
+index 7ec2c03..44a67e8 100644
+--- a/jobscout/freescan.py
++++ b/jobscout/freescan.py
+@@ -26,21 +26,44 @@ from .store import Position, slugify
+ 
+ # --- role type ---------------------------------------------------------------
+ 
++# Support and administrative staff roles, which are never an academic track.
++# Doctoral, postdoctoral, professorial and leadership titles are NOT rejected
++# here any more. Each has its own track below, and a profile decides which of
++# them to search by listing them under "## Role types".
+ _REJECT = re.compile(
+-    r"\b(post-?doc\w*|post-?doctoral|dean|provost|president|chancellor|director|"
+-    r"department (chair|head)|head of|chairperson|adjunct|visiting|"
+-    r"graduate (assistant|student)|ph\.?d\.? (student|position|candidate)|"
+-    r"studentship|technician|coordinator|manager|administrator|advisor|"
+-    r"specialist|librarian|counsel|intern)\b",
++    r"\b(provost|president|chancellor|adjunct|per[- ]course|sessional|"
++    r"graduate (assistant|teaching assistant)|technician|technologist|"
++    r"coordinator|manager|administrator|advisor|adviser|"
++    r"specialist|librarian|counsel|counsellor|counselor|intern|"
++    r"secretary|receptionist|custodian|accountant)\b",
+     re.I,
+ )
+-_SENIOR_ONLY = re.compile(r"\b(associate|full|distinguished|endowed)\s+professor\b", re.I)
+ 
++# Ordered most specific first. The first pattern that matches wins, so
++# "Research Assistant Professor" lands on research faculty, and a faculty line
++# that also carries an administrative duty ("Assistant Professor and Director
++# of the Center") lands on the faculty track rather than on director.
+ _TRACKS = (
++    (
++        "phd",
++        re.compile(
++            r"\bph\.?d\.?\s*(student|position|candidate|researcher|fellow|vacancy|opportunit)"
++            r"|\bdoctoral (student|position|candidate|researcher|programme|program)\b"
++            r"|\bstudentship\b|\bdoctoral fellowship\b",
++            re.I,
++        ),
++    ),
++    (
++        "postdoc",
++        re.compile(
++            r"\bpost-?doc\w*\b|\bpost-?doctoral\b|\bpost doc\b",
++            re.I,
++        ),
++    ),
+     (
+         "research faculty",
+         re.compile(
+-            r"\bresearch (assistant )?professor\b|\bresearch faculty\b|"
++            r"\bresearch (assistant |associate )?professor\b|\bresearch faculty\b|"
+             r"\bprofessor of research\b",
+             re.I,
+         ),
+@@ -48,9 +71,10 @@ _TRACKS = (
+     (
+         "teaching professor",
+         re.compile(
+-            r"\bteaching (assistant )?professor\b|\b(assistant )?professor of teaching\b|"
++            r"\bteaching (assistant |associate )?professor\b|\b(assistant |associate )?professor of teaching\b|"
+             r"\bteaching[- ]track\b|\blecturer\b|\binstructor\b|\bprofessor of (the )?practice\b|"
+-            r"\bteaching faculty\b",
++            r"\bteaching faculty\b|\bclinical (assistant |associate )?professor\b|"
++            r"\binstructional (assistant |associate )?professor\b|\bvisiting (assistant |associate )?professor\b",
+             re.I,
+         ),
+     ),
+@@ -67,17 +91,48 @@ _TRACKS = (
+             re.I,
+         ),
+     ),
++    (
++        "associate professor",
++        re.compile(r"\bassociate professor\b|\breader\b", re.I),
++    ),
++    (
++        "professor",
++        re.compile(r"\b(full|distinguished|endowed|chair|named) professor\b|"
++                   r"\bprofessor\b", re.I),
++    ),
++    (
++        "department head",
++        re.compile(
++            r"\bdepartment (chair|head)\b|\bhead of (department|school|division|the )\b|"
++            r"\bchairperson\b|\bdepartment chairperson\b|\bhod\b|\bschool head\b",
++            re.I,
++        ),
++    ),
++    (
++        "dean",
++        re.compile(r"\b(associate |assistant |vice |executive )?dean\b", re.I),
++    ),
++    (
++        "director",
++        re.compile(r"\b(associate |assistant |executive |deputy )?director\b|"
++                   r"\bcentre director\b|\bcenter director\b", re.I),
++    ),
+ )
+ 
+ 
+ def classify(title: str) -> str | None:
+-    """The academic track a job title belongs to, or None to skip it."""
++    """The academic track a job title belongs to, or None to skip it.
++
++    None means the title is not an academic post at all, for instance a
++    technician or a coordinator. Which of the tracks are actually wanted is a
++    separate question, decided by the profile's role-type list.
++    """
+     if _REJECT.search(title):
+         return None
+     for track, pattern in _TRACKS:
+         if pattern.search(title):
+             return track
+-    return None  # e.g. "Associate Professor" alone, or a staff role
++    return None
+ 
+ 
+ # --- visa --------------------------------------------------------------------
+@@ -208,6 +263,9 @@ def score(spec: Spec, *, title: str, text: str, track: str | None,
+     if spec.needs_sponsorship and (sponsorship == "no" or citizenship):
+         why = "requires US citizenship" if citizenship else "will not sponsor a visa"
+         return Verdict(False, 0, why)
++    if not feeds.in_countries(location, spec.countries):
++        found = feeds.country_of(location) or location
++        return Verdict(False, 0, f"in {found}, not one of your countries")
+ 
+     core_title = _hits(spec.core, title)
+     core_text = _hits(spec.core, text)
+@@ -241,8 +299,18 @@ def score(spec: Spec, *, title: str, text: str, track: str | None,
+ Progress = Callable[[str, float], None]
+ 
+ 
++_CATEGORIES = {
++    "phd": "doctoral",
++    "postdoc": "postdoctoral",
++    "teaching professor": "teaching track",
++    "department head": "leadership",
++    "dean": "leadership",
++    "director": "leadership",
++}
++
++
+ def _category(track: str) -> str:
+-    return "teaching track" if track == "teaching professor" else "academic"
++    return _CATEGORIES.get(track, "academic")
+ 
+ 
+ def run(
+diff --git a/jobscout/spec.py b/jobscout/spec.py
+index faab0a7..6b7f02c 100644
+--- a/jobscout/spec.py
++++ b/jobscout/spec.py
+@@ -21,6 +21,8 @@ from __future__ import annotations
+ import re
+ from dataclasses import dataclass, field
+ 
++# The four tracks searched unless the profile says otherwise. Kept narrow on
++# purpose, so an existing profile behaves exactly as it always did.
+ ROLE_TYPES = (
+     "assistant professor",
+     "teaching professor",
+@@ -28,6 +30,22 @@ ROLE_TYPES = (
+     "research scientist",
+ )
+ 
++# Every track the scanner can recognise, from doctoral through to leadership.
++# Add any of these to a profile's "## Role types" list to search for them.
++ALL_ROLE_TYPES = (
++    "phd",
++    "postdoc",
++    "research scientist",
++    "research faculty",
++    "teaching professor",
++    "assistant professor",
++    "associate professor",
++    "professor",
++    "department head",
++    "dean",
++    "director",
++)
++
+ DEFAULT_WEIGHTS = {
+     "subject": 40,
+     "role": 20,
+@@ -46,6 +64,7 @@ class Spec:
+     supporting: list[str] = field(default_factory=list)
+     avoid: list[str] = field(default_factory=list)
+     locations: list[str] = field(default_factory=list)
++    countries: list[str] = field(default_factory=list)
+     sources: list[str] = field(default_factory=list)
+     weights: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
+     threshold: int = 50
+@@ -103,15 +122,36 @@ def _find(sections: dict[str, list[str]], *names: str) -> list[str] | None:
+ 
+ 
+ def _role_type(text: str) -> str | None:
++    """Map a line from a profile's role-type list onto a known track.
++
++    Order matters. The most specific wording is tested first, so
++    "research assistant professor" lands on research faculty rather than
++    assistant professor, and "postdoctoral scientist" on postdoc rather
++    than research scientist.
++    """
+     t = text.lower()
+-    if "teach" in t or "lectur" in t or "instruct" in t:
+-        return "teaching professor"
++    if "phd" in t or "ph.d" in t or "doctoral student" in t or "studentship" in t:
++        return "phd"
++    if "postdoc" in t or "post-doc" in t or "postdoctoral" in t or "post-doctoral" in t:
++        return "postdoc"
++    if "dean" in t:
++        return "dean"
++    if "director" in t:
++        return "director"
++    if "head" in t or "hod" in t or "chair" in t:
++        return "department head"
+     if "research faculty" in t or "research professor" in t or "research assistant prof" in t:
+         return "research faculty"
++    if "teach" in t or "lectur" in t or "instruct" in t or "practice" in t:
++        return "teaching professor"
+     if "scientist" in t:
+         return "research scientist"
+     if "assistant professor" in t or "tenure" in t:
+         return "assistant professor"
++    if "associate professor" in t:
++        return "associate professor"
++    if "professor" in t:
++        return "professor"
+     return None
+ 
+ 
+@@ -144,12 +184,14 @@ def parse(md: str) -> Spec:
+         ("supporting", ("supporting keyword", "supporting term")),
+         ("avoid", ("avoid keyword", "avoid term", "exclude keyword")),
+         ("locations", ("location",)),
++        ("countries", ("countr",)),
+         ("sources", ("source",)),
+     ):
+         lines = _find(s, *names)
+         if lines is not None:
+             setattr(spec, attr, _items(lines))
+     spec.locations = [x for x in spec.locations if x not in ("anywhere", "any", "everywhere")]
++    spec.countries = [x for x in spec.countries if x not in ("anywhere", "any", "everywhere", "all")]
+ 
+     lines = _find(s, "scoring")
+     if lines is not None:
+diff --git a/streamlit_app.py b/streamlit_app.py
+index 71a6955..c38f956 100644
+--- a/streamlit_app.py
++++ b/streamlit_app.py
+@@ -23,7 +23,7 @@ from jobscout import builder, feeds
+ from jobscout.cv import CVError, read_cv
+ from jobscout.profile import prompt_for
+ from jobscout.render import render
+-from jobscout.spec import ROLE_TYPES, parse
++from jobscout.spec import ALL_ROLE_TYPES, ROLE_TYPES, parse
+ from jobscout.store import STATUSES, Position, merge
+ 
+ ROOT = Path(__file__).resolve().parent
+@@ -216,9 +216,14 @@ def profile_form() -> None:
+         )
+         roles = st.multiselect(
+             "Role types to search",
+-            options=list(ROLE_TYPES),
++            options=list(ALL_ROLE_TYPES),
+             default=list(ROLE_TYPES),
+-            format_func=str.title,
++            format_func=lambda r: {"phd": "PhD position", "hod": "Head of Department"}.get(
++                r, r.title()
++            ),
++            help="The four faculty and research tracks are on by default. Add PhD, "
++                 "postdoc, associate professor, professor, department head, dean or "
++                 "director to widen the search.",
+         )
+         visa = st.radio(
+             "Do you need visa sponsorship (for example H-1B)?",
+@@ -243,8 +248,16 @@ def profile_form() -> None:
+             "Avoid keywords - a job title containing these is dropped",
+             placeholder="nursing\nclinical\nmedicine",
+         )
++        countries = st.multiselect(
++            "Countries - leave empty to search every country",
++            options=list(feeds.COUNTRIES),
++            default=[],
++            help="A posting whose location names a country outside your list is "
++                 "dropped. A posting with no readable location is always kept.",
++        )
+         locations = st.text_area(
+-            "Locations - leave empty for anywhere (states, cities or countries, one per line)"
++            "Locations within those countries - leave empty for anywhere "
++            "(states or cities, one per line)"
+         )
+         boards = st.multiselect(
+             "Job boards",
+@@ -272,6 +285,7 @@ def profile_form() -> None:
+             supporting=lines(supporting),
+             avoid=lines(avoid),
+             locations=lines(locations),
++            countries=countries,
+             sources=boards,
+             threshold=threshold,
+         )
+@@ -358,6 +372,7 @@ def profile_editor() -> None:
+         st.write("Supporting: " + (", ".join(spec.supporting) or "—"))
+         st.write("Avoid: " + (", ".join(spec.avoid) or "—"))
+         st.write("Locations: " + (", ".join(spec.locations) or "anywhere"))
++        st.write("Countries: " + (", ".join(spec.countries) or "every country"))
+         st.write(f"Threshold: {spec.threshold} · strong fit: {spec.strong}")
+         for problem in spec.problems():
+             st.error(problem)
+diff --git a/tests/test_free.py b/tests/test_free.py
+index c7e5088..93129a0 100644
+--- a/tests/test_free.py
++++ b/tests/test_free.py
+@@ -131,16 +131,79 @@ def test_classify():
+         "Research Assistant Professor, Division of Science": "research faculty",
+         "Junior Research Scientist in Climate": "research scientist",
+         "Project Scientist": "research scientist",
+-        "Associate Professor of Geography": None,
+-        "Postdoctoral Research Scientist": None,
+-        "Department Chair, Geography": None,
++        # widened tracks: these are now classified, not thrown away
++        "Associate Professor of Geography": "associate professor",
++        "Professor of Physics": "professor",
++        "Postdoctoral Research Scientist": "postdoc",
++        "Postdoctoral Research Associate in Soil Moisture": "postdoc",
++        "PhD position in radar remote sensing": "phd",
++        "Doctoral Researcher, Geoinformatics": "phd",
++        "Department Chair, Geography": "department head",
++        "Head of School of Engineering": "department head",
++        "Dean of the College of Engineering": "dean",
++        "Director, Center for Geospatial Analytics": "director",
++        "Visiting Assistant Professor of GIS": "teaching professor",
++        "Clinical Assistant Professor, Data Science": "teaching professor",
++        # still not academic posts at all
+         "Adjunct Instructor, GIS": None,
+         "GIS Technician": None,
++        "Research Program Coordinator": None,
++        "Provost and Vice President": None,
+     }
+     for title, want in cases.items():
+         assert freescan.classify(title) == want, title
+ 
+ 
++def test_country_inference():
++    assert feeds.country_of("Gainesville, FL") == "United States"
++    assert feeds.country_of("Starkville, Mississippi") == "United States"
++    assert feeds.country_of("London, United Kingdom") == "United Kingdom"
++    assert feeds.country_of("Wageningen, Netherlands") == "Netherlands"
++    assert feeds.country_of("Varanasi, India") == "India"
++    assert feeds.country_of("Sydney, Australia") == "Australia"
++    # unreadable or absent locations must not be guessed at
++    assert feeds.country_of("") == ""
++    assert feeds.country_of("Remote") == ""
++
++
++def test_in_countries_is_permissive_when_unknown():
++    assert feeds.in_countries("Gainesville, FL", []) is True          # no filter
++    assert feeds.in_countries("Gainesville, FL", ["United States"]) is True
++    assert feeds.in_countries("Gainesville, FL", ["Germany"]) is False
++    assert feeds.in_countries("", ["Germany"]) is True                # unknown is kept
++    assert feeds.in_countries("Remote", ["Germany"]) is True
++
++
++def test_country_filter_in_score():
++    spec = _spec(countries=["United States"])
++    base = dict(title="Assistant Professor, Remote Sensing",
++                text="Remote sensing and GIS. Visa sponsorship is available.",
++                track="assistant professor", sponsorship="yes", citizenship=False)
++    assert freescan.score(spec, **base, location="Gainesville, FL").keep is True
++    v = freescan.score(spec, **base, location="Munich, Germany")
++    assert v.keep is False and "not one of your countries" in v.reason
++    # no country list means no country filter
++    assert freescan.score(_spec(), **base, location="Munich, Germany").keep is True
++
++
++def test_profile_round_trips_countries():
++    md = builder.build(name="X", core=["gis"], countries=["United States", "Canada"])
++    spec = parse(md)
++    assert spec.countries == ["united states", "canada"]
++    assert parse(builder.build(name="X", core=["gis"])).countries == []
++
++
++def test_widened_role_types_round_trip():
++    md = builder.build(name="X", core=["gis"],
++                       role_types=["phd", "postdoc", "dean", "director",
++                                   "associate professor", "professor",
++                                   "department head"])
++    spec = parse(md)
++    assert spec.role_types == ["phd", "postdoc", "dean", "director",
++                               "associate professor", "professor",
++                               "department head"]
++
++
+ def test_visa_wording():
+     no = [
+         "The university will not sponsor visas for this position.",

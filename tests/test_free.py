@@ -131,14 +131,77 @@ def test_classify():
         "Research Assistant Professor, Division of Science": "research faculty",
         "Junior Research Scientist in Climate": "research scientist",
         "Project Scientist": "research scientist",
-        "Associate Professor of Geography": None,
-        "Postdoctoral Research Scientist": None,
-        "Department Chair, Geography": None,
+        # widened tracks: these are now classified, not thrown away
+        "Associate Professor of Geography": "associate professor",
+        "Professor of Physics": "professor",
+        "Postdoctoral Research Scientist": "postdoc",
+        "Postdoctoral Research Associate in Soil Moisture": "postdoc",
+        "PhD position in radar remote sensing": "phd",
+        "Doctoral Researcher, Geoinformatics": "phd",
+        "Department Chair, Geography": "department head",
+        "Head of School of Engineering": "department head",
+        "Dean of the College of Engineering": "dean",
+        "Director, Center for Geospatial Analytics": "director",
+        "Visiting Assistant Professor of GIS": "teaching professor",
+        "Clinical Assistant Professor, Data Science": "teaching professor",
+        # still not academic posts at all
         "Adjunct Instructor, GIS": None,
         "GIS Technician": None,
+        "Research Program Coordinator": None,
+        "Provost and Vice President": None,
     }
     for title, want in cases.items():
         assert freescan.classify(title) == want, title
+
+
+def test_country_inference():
+    assert feeds.country_of("Gainesville, FL") == "United States"
+    assert feeds.country_of("Starkville, Mississippi") == "United States"
+    assert feeds.country_of("London, United Kingdom") == "United Kingdom"
+    assert feeds.country_of("Wageningen, Netherlands") == "Netherlands"
+    assert feeds.country_of("Varanasi, India") == "India"
+    assert feeds.country_of("Sydney, Australia") == "Australia"
+    # unreadable or absent locations must not be guessed at
+    assert feeds.country_of("") == ""
+    assert feeds.country_of("Remote") == ""
+
+
+def test_in_countries_is_permissive_when_unknown():
+    assert feeds.in_countries("Gainesville, FL", []) is True          # no filter
+    assert feeds.in_countries("Gainesville, FL", ["United States"]) is True
+    assert feeds.in_countries("Gainesville, FL", ["Germany"]) is False
+    assert feeds.in_countries("", ["Germany"]) is True                # unknown is kept
+    assert feeds.in_countries("Remote", ["Germany"]) is True
+
+
+def test_country_filter_in_score():
+    spec = _spec(countries=["United States"])
+    base = dict(title="Assistant Professor, Remote Sensing",
+                text="Remote sensing and GIS. Visa sponsorship is available.",
+                track="assistant professor", sponsorship="yes", citizenship=False)
+    assert freescan.score(spec, **base, location="Gainesville, FL").keep is True
+    v = freescan.score(spec, **base, location="Munich, Germany")
+    assert v.keep is False and "not one of your countries" in v.reason
+    # no country list means no country filter
+    assert freescan.score(_spec(), **base, location="Munich, Germany").keep is True
+
+
+def test_profile_round_trips_countries():
+    md = builder.build(name="X", core=["gis"], countries=["United States", "Canada"])
+    spec = parse(md)
+    assert spec.countries == ["united states", "canada"]
+    assert parse(builder.build(name="X", core=["gis"])).countries == []
+
+
+def test_widened_role_types_round_trip():
+    md = builder.build(name="X", core=["gis"],
+                       role_types=["phd", "postdoc", "dean", "director",
+                                   "associate professor", "professor",
+                                   "department head"])
+    spec = parse(md)
+    assert spec.role_types == ["phd", "postdoc", "dean", "director",
+                               "associate professor", "professor",
+                               "department head"]
 
 
 def test_visa_wording():

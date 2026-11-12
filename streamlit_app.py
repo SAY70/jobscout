@@ -23,7 +23,7 @@ from jobscout import builder, feeds
 from jobscout.cv import CVError, read_cv
 from jobscout.profile import prompt_for
 from jobscout.render import render
-from jobscout.spec import ROLE_TYPES, parse
+from jobscout.spec import ALL_ROLE_TYPES, ROLE_TYPES, parse
 from jobscout.store import STATUSES, Position, merge
 
 ROOT = Path(__file__).resolve().parent
@@ -216,9 +216,14 @@ def profile_form() -> None:
         )
         roles = st.multiselect(
             "Role types to search",
-            options=list(ROLE_TYPES),
+            options=list(ALL_ROLE_TYPES),
             default=list(ROLE_TYPES),
-            format_func=str.title,
+            format_func=lambda r: {"phd": "PhD position", "hod": "Head of Department"}.get(
+                r, r.title()
+            ),
+            help="The four faculty and research tracks are on by default. Add PhD, "
+                 "postdoc, associate professor, professor, department head, dean or "
+                 "director to widen the search.",
         )
         visa = st.radio(
             "Do you need visa sponsorship (for example H-1B)?",
@@ -243,8 +248,16 @@ def profile_form() -> None:
             "Avoid keywords - a job title containing these is dropped",
             placeholder="nursing\nclinical\nmedicine",
         )
+        countries = st.multiselect(
+            "Countries - leave empty to search every country",
+            options=list(feeds.COUNTRIES),
+            default=[],
+            help="A posting whose location names a country outside your list is "
+                 "dropped. A posting with no readable location is always kept.",
+        )
         locations = st.text_area(
-            "Locations - leave empty for anywhere (states, cities or countries, one per line)"
+            "Locations within those countries - leave empty for anywhere "
+            "(states or cities, one per line)"
         )
         boards = st.multiselect(
             "Job boards",
@@ -272,6 +285,7 @@ def profile_form() -> None:
             supporting=lines(supporting),
             avoid=lines(avoid),
             locations=lines(locations),
+            countries=countries,
             sources=boards,
             threshold=threshold,
         )
@@ -358,6 +372,7 @@ def profile_editor() -> None:
         st.write("Supporting: " + (", ".join(spec.supporting) or "—"))
         st.write("Avoid: " + (", ".join(spec.avoid) or "—"))
         st.write("Locations: " + (", ".join(spec.locations) or "anywhere"))
+        st.write("Countries: " + (", ".join(spec.countries) or "every country"))
         st.write(f"Threshold: {spec.threshold} · strong fit: {spec.strong}")
         for problem in spec.problems():
             st.error(problem)
