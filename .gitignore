@@ -3,6 +3,7 @@
 /positions.json
 /tracker.html
 *.pdf
+!docs/jobscout-guide.pdf
 *.docx
 .env
 
